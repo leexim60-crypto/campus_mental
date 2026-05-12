@@ -1,0 +1,108 @@
+@import 'tailwindcss';
+
+/* 与 Element Plus 一致：html.dark 切换深色 */
+@custom-variant dark (&:where(.dark, .dark *));
+
+@layer base {
+  body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue',
+      Arial, 'Noto Sans', sans-serif;
+    @apply antialiased transition-colors duration-300 bg-slate-100 text-slate-900;
+  }
+
+  a {
+    color: inherit;
+    text-decoration: none;
+  }
+}
+
+.dark body {
+  @apply bg-slate-950 text-slate-100;
+}
+
+/* --------------------------------------------------------------------------
+ 深浅色切换时 Element Plus 与正文对比度（避免标签/辅助按钮/复选框发灰看不清）
+   -------------------------------------------------------------------------- */
+html:not(.dark) {
+  --app-readable-muted: #475569;
+}
+
+.dark {
+  --app-readable-muted: #cbd5e1;
+}
+
+/* 表单项标签 */
+html:not(.dark) .el-form-item__label {
+  color: #334155 !important;
+}
+
+.dark .el-form-item__label {
+  color: #e2e8f0 !important;
+}
+
+/* 复选框 / 单选文案 */
+.dark .el-checkbox__label,
+.dark .el-radio__label {
+  color: #e2e8f0 !important;
+}
+
+html:not(.dark) .el-checkbox__label,
+html:not(.dark) .el-radio__label {
+  color: #334155 !important;
+}
+
+/* 卡片内默认正文（避免深色卡上仍用浅灰字） */
+.dark .el-card {
+  color: #f1f5f9;
+}
+
+html:not(.dark) .el-card {
+  color: #0f172a;
+}
+
+/* 卡片上的 text 链接按钮：深色背景用亮青，浅色用主色加深 */
+html:not(.dark) .el-card .el-button.is-text:not(.is-disabled) {
+  color: #0284c7 !important;
+}
+
+html:not(.dark) .el-card .el-button.is-text:not(.is-disabled):hover {
+  color: #0369a1 !important;
+}
+
+.dark .el-card .el-button.is-text:not(.is-disabled) {
+  color: #7dd3fc !important;
+}
+
+.dark .el-card .el-button.is-text:not(.is-disabled):hover {
+  color: #bae6fd !important;
+}
+
+/* 描述列表、表格次要信息 */
+.dark .el-descriptions__label {
+  color: #94a3b8 !important;
+}
+
+.dark .el-descriptions__content {
+  color: #f1f5f9 !important;
+}
+
+.dark .el-table {
+  --el-table-text-color: #e2e8f0;
+  --el-table-header-text-color: #cbd5e1;
+}
+
+/* 对话框 */
+.dark .el-dialog__title {
+  color: #f8fafc !important;
+}
+
+.dark .el-dialog__body {
+  color: #e2e8f0;
+}
+
+/* 输入框占位符在深色卡中略提亮 */
+.dark .el-input__inner::placeholder,
+.dark .el-textarea__inner::placeholder {
+  color: #94a3b8;
+}

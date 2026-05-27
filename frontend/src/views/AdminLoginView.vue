@@ -26,7 +26,7 @@
 
       <el-form v-else :model="regForm" :rules="regRules" ref="regFormRef" label-width="96px">
         <p class="reg-hint text-sm text-slate-600 dark:text-slate-400">
-          需在服务端 <code class="rounded bg-slate-200 px-1 dark:bg-slate-700">ADMIN_REGISTER_SECRET</code> 与下方「注册密钥」一致。
+          需 在 服 务 端 <code class="rounded bg-slate-200 px-1 dark:bg-slate-700">ADMIN_REGISTER_SECRET</code> 与下方「注册密钥」一致。
         </p>
         <el-form-item label="用户名" prop="username">
           <el-input v-model="regForm.username" placeholder="新管理员用户名" />

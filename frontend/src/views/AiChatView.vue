@@ -69,12 +69,30 @@ const chatTipLine = computed(() => {
     ? '本机 Ollama 或 DeepSeek。'
     : '本机 Ollama 或 DeepSeek（当前不可用）。'
 })
-const messages = ref([
-  {
-    role: 'assistant',
-    content: '你好，我是心灵树洞助手。你可以慢慢说，我会认真听。今天有什么想聊的吗？',
-  },
-])
+const STORAGE_KEY = 'ai_chat_messages'
+const DEFAULT_MSG = {
+  role: 'assistant',
+  content: '你好，我是心灵树洞助手。你可以慢慢说，我会认真听。今天有什么想聊的吗？',
+}
+
+function loadMessages() {
+  try {
+    const raw = sessionStorage.getItem(STORAGE_KEY)
+    if (raw) {
+      const arr = JSON.parse(raw)
+      if (Array.isArray(arr) && arr.length > 0) return arr
+    }
+  } catch {}
+  return [DEFAULT_MSG]
+}
+
+function saveMessages() {
+  try {
+    sessionStorage.setItem(STORAGE_KEY, JSON.stringify(messages.value))
+  } catch {}
+}
+
+const messages = ref(loadMessages())
 const draft = ref('')
 const loading = ref(false)
 const streamStarted = ref(false)
@@ -98,7 +116,7 @@ function scrollBottom() {
   })
 }
 
-watch(messages, () => scrollBottom(), { deep: true })
+watch(messages, () => { scrollBottom(); saveMessages() }, { deep: true })
 
 async function send() {
   const text = draft.value.trim()
@@ -193,7 +211,7 @@ async function send() {
   }
 }
 
-onMounted(loadConfig)
+onMounted(() => { loadConfig(); scrollBottom() })
 </script>
 
 <style scoped>

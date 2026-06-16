@@ -1,6 +1,6 @@
 # 校园心理健康智能评估与干预平台（示例项目）
 
-基于《校园心理健康智能评估》的前后端分离示例，适合课程作业、毕设展示与二次开发。
+基于《校园心理健康智能评估与干预平台（3人分工细化文档）》的前后端分离示例，适合课程作业、毕设展示与二次开发。
 
 **三人分工（与当前代码一致）**：见 [分工说明.md](./分工说明.md)。  
 **初级阶段（开发内容、目标、计划、技术、分工总览）**：见 [项目初级阶段规划.md](./项目初级阶段规划.md)。
@@ -16,12 +16,12 @@
 
 ## 环境要求
 
-| 组件    | 建议版本           | 说明                                                                |
-| ------- | ------------------ | ------------------------------------------------------------------- |
-| Python  | 3.10+（推荐 3.11） | 后端运行环境                                                        |
-| Node.js | 18+                | 前端构建与开发服务器                                                |
-| MySQL   | 5.7+ / 8.0         | 存储用户、测评、预约、资源等                                        |
-| Ollama  | 最新版             | 可选；不装则测评 AI 点评会回退规则模板，心灵树洞需配置云端或 Ollama |
+| 组件 | 建议版本 | 说明 |
+|------|----------|------|
+| Python | 3.10+（推荐 3.11） | 后端运行环境 |
+| Node.js | 18+ | 前端构建与开发服务器 |
+| MySQL | 5.7+ / 8.0 | 存储用户、测评、预约、资源等 |
+| Ollama | 最新版 | 可选；不装则测评 AI 点评会回退规则模板，心灵树洞需配置云端或 Ollama |
 
 ## 快速开始（本地开发）
 
@@ -35,11 +35,25 @@
 ```text
 test/
   README.md
+  分工说明.md
+  项目初级阶段规划.md
   backend/
-    main.py              # FastAPI 入口、路由、数据模型、种子数据
+    main.py              # FastAPI 入口（组装 app、CORS、lifespan、include_router）
     config.py            # 环境变量与数据库 URL
     security.py          # JWT、密码哈希
     llm_client.py        # DeepSeek / Ollama 统一调用与提示词
+    database.py          # SQLAlchemy engine、SessionLocal、Base、get_db
+    models.py            # ORM 模型（User、EvaluationQuestion、EvaluationResult、MentalResource、CounselingAppointment）
+    schemas.py           # Pydantic 模型（ApiResponse、各 RequestBody）
+    deps.py              # FastAPI 依赖注入（JWT 鉴权、角色校验）
+    seed.py              # 种子数据与自动迁移（PHQ-9、SCL-90、心理资源）
+    routers/
+      __init__.py
+      user.py            # 成员A：学生账号（登录/注册/重置密码）+ 测评（题目/提交/结果）
+      admin.py           # 成员B：管理员（登录/注册/权限）+ 统计（情绪/量表）+ 导出 CSV
+      resource.py        # 成员C：心理资源库（列表/详情）
+      appointment.py     # 成员C：咨询预约（提交/列表/取消）
+      ai.py              # 成员C：心灵树洞（对话/流式/公开配置）
     requirements.txt
     .env.example         # 复制为 .env 后修改
     migrations/          # 可选 SQL（旧库补列等）
@@ -93,18 +107,18 @@ pip install -r requirements.txt
 
 将 `backend/.env.example` 复制为 **`backend/.env`**，按实际环境修改。常用项如下：
 
-| 变量                      | 说明                                                                                     |
-| ------------------------- | ---------------------------------------------------------------------------------------- |
-| `DB_USER` / `DB_PASSWORD` | MySQL 账号密码                                                                           |
-| `DB_HOST`                 | 默认 `127.0.0.1`；远程数据库填 IP 或域名                                                 |
-| `DB_PORT`                 | 默认 `3306`；若 MySQL 映射到本机 **3307**（例如 Docker）则改为 `3307`                    |
-| `DB_NAME`                 | 默认 `campus_mental`                                                                     |
-| `JWT_SECRET`              | 生产环境务必改为**长随机字符串**                                                         |
-| `CORS_ORIGINS`            | 生产环境填前端地址，多个用英文逗号分隔，如 `http://localhost:5173,http://127.0.0.1:5173` |
-| `LLM_PROVIDER`            | `ollama`（默认）/ `auto` / `deepseek`                                                    |
-| `OLLAMA_BASE_URL`         | 默认 `http://127.0.0.1:11434`                                                            |
-| `OLLAMA_MODEL`            | 须与 `ollama list` 一致，如 `qwen2.5:7b`                                                 |
-| `DEEPSEEK_API_KEY`        | 使用云端时填写                                                                           |
+| 变量 | 说明 |
+|------|------|
+| `DB_USER` / `DB_PASSWORD` | MySQL 账号密码 |
+| `DB_HOST` | 默认 `127.0.0.1`；远程数据库填 IP 或域名 |
+| `DB_PORT` | 默认 `3306`；若 MySQL 映射到本机 **3307**（例如 Docker）则改为 `3307` |
+| `DB_NAME` | 默认 `campus_mental` |
+| `JWT_SECRET` | 生产环境务必改为**长随机字符串** |
+| `CORS_ORIGINS` | 生产环境填前端地址，多个用英文逗号分隔，如 `http://localhost:5173,http://127.0.0.1:5173` |
+| `LLM_PROVIDER` | `ollama`（默认）/ `auto` / `deepseek` |
+| `OLLAMA_BASE_URL` | 默认 `http://127.0.0.1:11434` |
+| `OLLAMA_MODEL` | 须与 `ollama list` 一致，如 `qwen2.5:7b` |
+| `DEEPSEEK_API_KEY` | 使用云端时填写 |
 
 更多 AI 调参与加速相关变量见下文「AI 生成速度」及 `.env.example` 内注释。
 
@@ -135,9 +149,9 @@ uvicorn main:app --reload --host 0.0.0.0 --port 8002
 
 ### 5. 验证后端
 
-| 地址                                | 说明                       |
-| ----------------------------------- | -------------------------- |
-| http://127.0.0.1:8002/docs          | Swagger / OpenAPI 交互文档 |
+| 地址 | 说明 |
+|------|------|
+| http://127.0.0.1:8002/docs | Swagger / OpenAPI 交互文档 |
 | http://127.0.0.1:8002/api/v1/health | 健康检查（含数据库连通性） |
 
 首次成功启动后，若表为空，会自动写入 **PHQ-9 / SCL-90 演示题** 与 **心理资源** 种子数据（资源按标题去重增量补充）。
@@ -184,13 +198,13 @@ python -c "from passlib.context import CryptContext; c=CryptContext(schemes=['bc
 
 ### AI 与 Ollama（后端侧摘要）
 
-- **免费与本机（推荐演示）**
-  - 安装 [Ollama](https://ollama.com)，执行 `ollama pull qwen2.5:7b`（或 `.env` 中其它模型名）。
-  - `LLM_PROVIDER=ollama`，或 `auto` 且**不填** `DEEPSEEK_API_KEY`，将走 Ollama。
+- **免费与本机（推荐演示）**  
+  - 安装 [Ollama](https://ollama.com)，执行 `ollama pull qwen2.5:7b`（或 `.env` 中其它模型名）。  
+  - `LLM_PROVIDER=ollama`，或 `auto` 且**不填** `DEEPSEEK_API_KEY`，将走 Ollama。  
   - 后端与 Ollama 默认同机 `http://127.0.0.1:11434`。
 
-- **云端 DeepSeek（可选）**
-  - 在 [DeepSeek 开放平台](https://platform.deepseek.com/) 创建 `DEEPSEEK_API_KEY`。
+- **云端 DeepSeek（可选）**  
+  - 在 [DeepSeek 开放平台](https://platform.deepseek.com/) 创建 `DEEPSEEK_API_KEY`。  
   - `LLM_PROVIDER=auto` 且配置密钥时优先 DeepSeek；失败可回退 Ollama（若已安装）。
 
 ## 前端运行
@@ -209,11 +223,11 @@ npm run dev
 
 ## 主要 API 分组（详见 /docs）
 
-- **学生**：`/api/v1/user/*` 注册、登录、重置密码
-- **测评**：`/api/v1/evaluation/*` 题目、提交结果、历史
-- **AI**：`/api/v1/ai/chat` 心灵树洞（整段返回）；`/api/v1/ai/chat/stream` **SSE 流式**（前端树洞页使用）；公开配置等
-- **资源 / 预约**：`/api/v1/resource/*`、`/api/v1/appointment/*`
-- **管理端**：`/api/v1/admin/*` 登录、统计、导出 CSV 等
+- **学生**：`/api/v1/user/*` 注册、登录、重置密码  
+- **测评**：`/api/v1/evaluation/*` 题目、提交结果、历史  
+- **AI**：`/api/v1/ai/chat` 心灵树洞（整段返回）；`/api/v1/ai/chat/stream` **SSE 流式**（前端树洞页使用）；公开配置等  
+- **资源 / 预约**：`/api/v1/resource/*`、`/api/v1/appointment/*`  
+- **管理端**：`/api/v1/admin/*` 登录、统计、导出 CSV 等  
 
 统一响应结构与健康检查见 Swagger **http://127.0.0.1:8002/docs**。
 
@@ -232,21 +246,21 @@ npm run dev
 
 ### 前端体验
 
-- 中文界面；Pinia 管理会话；路由守卫与 Axios 401 处理
+- 中文界面；Pinia 管理会话；路由守卫与 Axios 401 处理  
 - 心灵树洞等长请求在前端代理层已设较长超时（开发环境）
 
 ## AI 生成速度（测评点评 / 心灵树洞）
 
 影响耗时的因素包括：**模型大小**、**GPU/CPU**、**max_tokens**、**上下文长度**。可在 `backend/.env` 调节（详见 `.env.example`）：
 
-| 变量                                | 作用                                  |
-| ----------------------------------- | ------------------------------------- |
-| `OLLAMA_MODEL`                      | 如 `qwen2.5:3b` 通常比 `7b` 更快      |
-| `LLM_EVAL_MAX_TOKENS`               | 测评长文上限，调小可加快              |
-| `LLM_CHAT_MAX_TOKENS`               | 树洞单轮上限，调小可加快              |
-| `LLM_TIMEOUT_SEC`                   | 请求超时秒数                          |
-| `OLLAMA_NUM_CTX`                    | 仅 Ollama；限制上下文有时加快 prefill |
-| `LLM_PROVIDER` / `DEEPSEEK_API_KEY` | 本机 CPU 慢时云端常更快               |
+| 变量 | 作用 |
+|------|------|
+| `OLLAMA_MODEL` | 如 `qwen2.5:3b` 通常比 `7b` 更快 |
+| `LLM_EVAL_MAX_TOKENS` | 测评长文上限，调小可加快 |
+| `LLM_CHAT_MAX_TOKENS` | 树洞单轮上限，调小可加快 |
+| `LLM_TIMEOUT_SEC` | 请求超时秒数 |
+| `OLLAMA_NUM_CTX` | 仅 Ollama；限制上下文有时加快 prefill |
+| `LLM_PROVIDER` / `DEEPSEEK_API_KEY` | 本机 CPU 慢时云端常更快 |
 
 首次加载模型可能明显慢于后续请求。流式输出（SSE）需额外开发以改善首字等待。
 

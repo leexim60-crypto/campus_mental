@@ -1,7 +1,7 @@
 import { ref, computed } from 'vue'
 import { defineStore } from 'pinia'
 
-const LS = {
+const SS = {
   token: 'access_token',
   userId: 'user_id',
   username: 'username',
@@ -9,23 +9,23 @@ const LS = {
 }
 
 export const useStudentAuthStore = defineStore('studentAuth', () => {
-  const accessToken = ref(localStorage.getItem(LS.token) ?? '')
+  const accessToken = ref(sessionStorage.getItem(SS.token) ?? '')
   const userId = ref(
-    localStorage.getItem(LS.userId) ? Number(localStorage.getItem(LS.userId)) : null,
+    sessionStorage.getItem(SS.userId) ? Number(sessionStorage.getItem(SS.userId)) : null,
   )
-  const username = ref(localStorage.getItem(LS.username) ?? '')
-  const role = ref(localStorage.getItem(LS.role) ?? '')
+  const username = ref(sessionStorage.getItem(SS.username) ?? '')
+  const role = ref(sessionStorage.getItem(SS.role) ?? '')
   const isLoggedIn = computed(() => Boolean(accessToken.value))
 
   function persist() {
-    if (accessToken.value) localStorage.setItem(LS.token, accessToken.value)
-    else localStorage.removeItem(LS.token)
-    if (userId.value != null) localStorage.setItem(LS.userId, String(userId.value))
-    else localStorage.removeItem(LS.userId)
-    if (username.value) localStorage.setItem(LS.username, username.value)
-    else localStorage.removeItem(LS.username)
-    if (role.value) localStorage.setItem(LS.role, role.value)
-    else localStorage.removeItem(LS.role)
+    if (accessToken.value) sessionStorage.setItem(SS.token, accessToken.value)
+    else sessionStorage.removeItem(SS.token)
+    if (userId.value != null) sessionStorage.setItem(SS.userId, String(userId.value))
+    else sessionStorage.removeItem(SS.userId)
+    if (username.value) sessionStorage.setItem(SS.username, username.value)
+    else sessionStorage.removeItem(SS.username)
+    if (role.value) sessionStorage.setItem(SS.role, role.value)
+    else sessionStorage.removeItem(SS.role)
   }
 
   function setSession(payload) {
@@ -42,10 +42,10 @@ export const useStudentAuthStore = defineStore('studentAuth', () => {
     userId.value = null
     username.value = ''
     role.value = ''
-    localStorage.removeItem(LS.token)
-    localStorage.removeItem(LS.userId)
-    localStorage.removeItem(LS.username)
-    localStorage.removeItem(LS.role)
+    sessionStorage.removeItem(SS.token)
+    sessionStorage.removeItem(SS.userId)
+    sessionStorage.removeItem(SS.username)
+    sessionStorage.removeItem(SS.role)
   }
 
   return {

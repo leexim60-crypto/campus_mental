@@ -8,7 +8,15 @@ from sqlalchemy.orm import relationship
 
 from database import Base
 
-
+"""
+用户实体 ORM 模型，映射数据库中的 user 表。
+Attributes:
+        id (int): 用户唯一主键，自增且建立索引。
+        username (str): 用户名，必须唯一且不能为空。
+        password (str): 用户密码（建议存储哈希值），不能为空。
+        role (str): 用户角色（如 student, admin 等），默认为 'student'。
+        create_time (datetime): 账户创建时间，默认为当前时间。
+"""
 class User(Base):
     __tablename__ = "user"
 

@@ -17,8 +17,11 @@
       <el-form inline>
         <el-form-item label="量表类型">
           <el-select v-model="scaleType" @change="loadQuestions">
-            <el-option label="PHQ-9" value="PHQ-9" />
-            <el-option label="SCL-90" value="SCL-90" />
+            <el-option label="PHQ-9（抑郁筛查）" value="PHQ-9" />
+            <el-option label="SCL-90（综合症状）" value="SCL-90" />
+            <el-option label="GAD-7（焦虑筛查）" value="GAD-7" />
+            <el-option label="PSS-10（压力感知）" value="PSS-10" />
+            <el-option label="SES（自尊水平）" value="SES" />
           </el-select>
         </el-form-item>
       </el-form>

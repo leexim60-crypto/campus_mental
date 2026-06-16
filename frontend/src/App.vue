@@ -1,16 +1,22 @@
 <template>
-  <div class="min-h-screen transition-colors duration-300"
-    :class="hideChrome ? 'bg-[#0b1020]' : 'bg-slate-100 dark:bg-slate-950'">
+  <div
+    class="min-h-screen transition-colors duration-300"
+    :class="hideChrome ? 'bg-[#0b1020]' : 'bg-slate-100 dark:bg-slate-950'"
+  >
     <template v-if="!hideChrome">
       <header class="app-header">
         <div
-          class="pointer-events-none absolute inset-0 bg-gradient-to-b from-white/10 to-transparent opacity-90 dark:from-white/5" />
+          class="pointer-events-none absolute inset-0 bg-gradient-to-b from-white/10 to-transparent opacity-90 dark:from-white/5"
+        />
         <div
-          class="pointer-events-none absolute -right-16 -top-24 h-56 w-56 rounded-full bg-cyan-400/20 blur-3xl dark:bg-cyan-500/10" />
+          class="pointer-events-none absolute -right-16 -top-24 h-56 w-56 rounded-full bg-cyan-400/20 blur-3xl dark:bg-cyan-500/10"
+        />
         <div
-          class="pointer-events-none absolute -bottom-20 -left-10 h-48 w-48 rounded-full bg-emerald-400/15 blur-3xl dark:bg-emerald-500/10" />
+          class="pointer-events-none absolute -bottom-20 -left-10 h-48 w-48 rounded-full bg-emerald-400/15 blur-3xl dark:bg-emerald-500/10"
+        />
         <div
-          class="pointer-events-none absolute inset-x-0 bottom-0 h-px bg-gradient-to-r from-transparent via-white/35 to-transparent" />
+          class="pointer-events-none absolute inset-x-0 bottom-0 h-px bg-gradient-to-r from-transparent via-white/35 to-transparent"
+        />
 
         <div class="relative z-[1] flex w-full min-w-0 items-center justify-between gap-4 px-5 sm:px-7">
           <div class="logo shrink-0 text-base font-semibold tracking-tight text-white drop-shadow-sm sm:text-lg">
@@ -139,12 +145,14 @@ function onAdminMenu(cmd) {
   align-items: center;
   overflow: hidden;
   border-bottom: 1px solid rgba(255, 255, 255, 0.12);
-  background: linear-gradient(115deg,
-      #115e59 0%,
-      #0f766e 28%,
-      #0d9488 52%,
-      #0e7490 78%,
-      #155e75 100%);
+  background: linear-gradient(
+    115deg,
+    #115e59 0%,
+    #0f766e 28%,
+    #0d9488 52%,
+    #0e7490 78%,
+    #155e75 100%
+  );
   box-shadow:
     0 4px 24px rgba(15, 118, 110, 0.28),
     inset 0 1px 0 rgba(255, 255, 255, 0.12);
@@ -153,11 +161,13 @@ function onAdminMenu(cmd) {
 /* 深色模式：略压暗、偏青灰，避免与内容区反差过硬 */
 .dark .app-header {
   border-bottom-color: rgba(94, 234, 212, 0.12);
-  background: linear-gradient(125deg,
-      #042f2e 0%,
-      #0c4a3e 35%,
-      #134e4a 65%,
-      #164e63 100%);
+  background: linear-gradient(
+    125deg,
+    #042f2e 0%,
+    #0c4a3e 35%,
+    #134e4a 65%,
+    #164e63 100%
+  );
   box-shadow:
     0 4px 28px rgba(0, 0, 0, 0.45),
     inset 0 1px 0 rgba(255, 255, 255, 0.06);

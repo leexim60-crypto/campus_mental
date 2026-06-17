@@ -38,6 +38,42 @@ SCL90_DEMO_ITEMS = [
     "担心自己的衣饰整齐及仪态的端正",
 ]
 
+GAD7_ITEMS = [
+    "感觉紧张、焦虑或急切",
+    "不能够停止或控制担忧",
+    "对各种各样的事情担忧过多",
+    "很难放松下来",
+    "由于不安而无法静坐",
+    "变得容易烦恼或急躁",
+    "感到似乎将有可怕的事情发生而害怕",
+]
+
+PSS10_ITEMS = [
+    "因为发生了意想不到的事情而感到心烦意乱",
+    "感到无法控制生活中重要的事情",
+    "感到紧张和有压力",
+    "成功地处理了恼人的生活麻烦",
+    "有效地应对了生活中重要的变化",
+    "对个人处理个人问题的能力没有信心",
+    "感觉事情按自己的意愿进行",
+    "发现自己不能处理所有自己必须做的事情",
+    "能够控制生活中的烦恼",
+    "觉得自己无法克服所有必须做的事情",
+]
+
+SES_ITEMS = [
+    "我感到自己是一个有价值的人，至少与其他人在同一水平上",
+    "我感到自己有许多好的品质",
+    "归根结底，我倾向于认为自己是一个失败者",
+    "我能像大多数人一样把事情做好",
+    "我感到自己值得自豪的地方不多",
+    "我对自己持肯定态度",
+    "总的来说，我对自己是满意的",
+    "我希望能为自己赢得更多的尊重",
+    "我确实时常感到毫无用处",
+    "我时常认为自己一无是处",
+]
+
 # ── 心理资源种子 ──────────────────────────────────────────
 
 RESOURCE_SEED_ROWS: list[tuple[str, str, str, Optional[str]]] = [
@@ -507,11 +543,23 @@ def _update_mental_resources(db: Session) -> None:
         db (Session): 当前活动的 SQLAlchemy 数据库会话对象。
 """
 def seed_if_empty(db: Session) -> None:
-    if db.query(EvaluationQuestion).count() == 0:
-        for i, t in enumerate(PHQ9_ITEMS, start=1):
-            db.add(EvaluationQuestion(scale_type="PHQ-9", content=t, sort=i))
-        for i, t in enumerate(SCL90_DEMO_ITEMS, start=1):
-            db.add(EvaluationQuestion(scale_type="SCL-90", content=t, sort=i))
+    # 始终检查并补充缺失的量表题目（兼容已有数据库的升级）
+    _NEW_SCALES = [
+        ("PHQ-9", PHQ9_ITEMS),
+        ("SCL-90", SCL90_DEMO_ITEMS),
+        ("GAD-7", GAD7_ITEMS),
+        ("PSS-10", PSS10_ITEMS),
+        ("SES", SES_ITEMS),
+    ]
+    for scale_type, items in _NEW_SCALES:
+        exists = (
+            db.query(EvaluationQuestion)
+            .filter(EvaluationQuestion.scale_type == scale_type)
+            .first()
+        )
+        if not exists:
+            for i, t in enumerate(items, start=1):
+                db.add(EvaluationQuestion(scale_type=scale_type, content=t, sort=i))
 
     _seed_mental_resources(db)
     db.commit()

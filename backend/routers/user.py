@@ -1,6 +1,9 @@
 """成员A：学生账号与心理测评"""
+import logging
 from datetime import datetime
 from typing import List
+
+_log = logging.getLogger(__name__)
 
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
@@ -42,6 +45,50 @@ def score_scl90_demo(scores: List[int]) -> tuple[str, str, int]:
     if mean < 2.0:
         return "中度症状倾向", "建议尽快联系学校心理咨询中心进行面谈评估，并告知辅导员或家长以获得支持。", total
     return "重度症状倾向", "建议立即寻求专业心理帮助，如出现自伤念头请拨打心理援助热线或前往医院急诊。", total
+
+
+def score_gad7(total_score: int) -> tuple[str, str]:
+    if total_score <= 4:
+        return "正常", "焦虑程度在正常范围内，建议继续保持良好的生活习惯与心态"
+    if total_score <= 9:
+        return "轻度焦虑", "存在轻度焦虑倾向，建议适当放松、规律作息，必要时可与朋友或家人倾诉"
+    if total_score <= 14:
+        return "中度焦虑", "建议尽快联系学校心理咨询中心，进行专业评估与干预"
+    return "重度焦虑", "强烈建议立即联系学校心理咨询中心或专业机构，必要时告知家长与辅导员"
+
+
+def score_pss10(scores: List[int]) -> tuple[str, str, int]:
+    # 第4、5、7、8题为正向题（感觉事情可控），需反向计分
+    reverse_indices = {3, 4, 6, 7}  # 0-based
+    adjusted = []
+    for i, s in enumerate(scores):
+        if i in reverse_indices:
+            adjusted.append(3 - s)
+        else:
+            adjusted.append(s)
+    total = sum(adjusted)
+    if total <= 10:
+        return "低压力", "当前压力感知较低，心理状态良好，建议继续保持积极的生活节奏", total
+    if total <= 20:
+        return "中等压力", "存在一定压力感知，建议适当调整作息、增加放松活动，必要时可寻求心理支持", total
+    return "高压力", "压力感知较高，建议尽快联系学校心理咨询中心，学习有效的压力管理方法", total
+
+
+def score_ses(scores: List[int]) -> tuple[str, str, int]:
+    # 第3、5、6、9、10题为反向题（负向表述），需反向计分
+    reverse_indices = {2, 4, 5, 8, 9}  # 0-based
+    adjusted = []
+    for i, s in enumerate(scores):
+        if i in reverse_indices:
+            adjusted.append(3 - s)
+        else:
+            adjusted.append(s)
+    total = sum(adjusted)
+    if total >= 22:
+        return "高自尊", "自尊水平良好，对自我有积极的认知，建议继续保持自信与自我接纳", total
+    if total >= 15:
+        return "中等自尊", "自尊水平处于中等，建议多关注自身优点与成就，培养积极的自我认知", total
+    return "低自尊", "自尊水平偏低，建议联系学校心理咨询中心，探索提升自我价值感的方法", total
 
 
 
@@ -121,7 +168,7 @@ def user_info(db: Session = Depends(get_db), user_id: int = Depends(get_current_
 
 # 【获取指定心理量表题目列表】
 @router.get("/evaluation/get-questions", response_model=ApiResponse)
-def get_questions(scale_type: str = Query(..., pattern="^(PHQ-9|SCL-90)$"), db: Session = Depends(get_db)):
+def get_questions(scale_type: str = Query(..., pattern="^(PHQ-9|SCL-90|GAD-7|PSS-10|SES)$"), db: Session = Depends(get_db)):
     # 1. 参数安全校验：通过 Query 接收必填的量表类型参数（scale_type），并使用正则表达式严格限制只能传入 "PHQ-9" 或 "SCL-90"，防止非法查询。
     # 2. 排序查询：根据传入的量表类型在 EvaluationQuestion 表中检索题目，并严格按照 sort 字段进行升序排列，保证前端展示的题目顺序正确。
     # 3. 数据格式化与返回：遍历查询结果，仅提取前端渲染问卷所需的核心字段（题目 ID、题目内容），并硬编码返回固定的选项列表 [0, 1, 2, 3]。
@@ -140,68 +187,79 @@ def calculate_result(
     db: Session = Depends(get_db),
     user_id: int = Depends(get_current_student_id),
 ):
-    # 1. 用户合法性校验：确认当前发起测评的学生 ID 在数据库中存在。
-    # 2. 题目与答案一致性校验（核心防作弊/防误操作机制）：
-    #    - 根据传入的量表类型（scale_type）查询该量表的所有题目，并按排序字段（sort）排序。
-    #    - 校验题目数量是否为 0（防止无效测评）。
-    #    - 校验前端传入的答案数量（scores）与数据库中的题目数量是否严格一致。
-    #    - 校验每道题的得分是否在合法范围内（0-3分）。
-    # 3. 基础得分与标签计算：根据量表类型（如 PHQ-9 或 SCL-90）调用对应的计分函数，得出总分（total_score）、情绪标签（emotion_label）和基础建议（suggestion）。
-    # 4. AI 大模型增强分析：
-    #    - 构建 Prompt 消息（build_evaluation_messages）。
-    #    - 调用大模型（llm_chat）生成个性化的深度建议。
-    #    - 容错与截断处理：如果 AI 返回了文本，则优先使用 AI 文本；否则降级使用基础建议。为防止超出数据库字段长度限制，对最终建议进行 62000 字符的截断保护。
-    # 5. 数据持久化：将测评结果（包含总分、标签、建议、AI 生成标识及使用的模型后端）写入 EvaluationResult 表。
-    # 6. 返回结构化结果：返回包含 AI 用户提示（ai_user_hint）、模型后端等详细信息的测评结果，供前端展示。
-    user = db.query(User).filter(User.id == user_id).first()
-    if not user:
-        return err(400, "用户不存在")
+    try:
+        user = db.query(User).filter(User.id == user_id).first()
+        if not user:
+            return err(400, "用户不存在")
 
-    qs = (
-        db.query(EvaluationQuestion)
-        .filter(EvaluationQuestion.scale_type == body.scale_type)
-        .order_by(EvaluationQuestion.sort).all()
-    )
-    expected = len(qs)
-    if expected == 0:
-        return err(400, "该量表暂无题目，请联系管理员")
-    if len(body.scores) != expected:
-        return err(400, f"题目数量不符，应为 {expected} 题")
-    for s in body.scores:
-        if s not in (0, 1, 2, 3):
-            return err(400, "每题得分须为 0–3")
+        qs = (
+            db.query(EvaluationQuestion)
+            .filter(EvaluationQuestion.scale_type == body.scale_type)
+            .order_by(EvaluationQuestion.sort).all()
+        )
+        expected = len(qs)
+        _log.info("calculate_result: scale=%s, expected=%d, got=%d", body.scale_type, expected, len(body.scores))
+        if expected == 0:
+            return err(400, "该量表暂无题目，请联系管理员")
+        if len(body.scores) != expected:
+            return err(400, f"题目数量不符，应为 {expected} 题")
+        for s in body.scores:
+            if s not in (0, 1, 2, 3):
+                return err(400, "每题得分须为 0–3")
 
-    if body.scale_type == "PHQ-9":
-        total_score = sum(body.scores)
-        emotion_label, suggestion = score_phq9(total_score)
-    else:
-        emotion_label, suggestion, total_score = score_scl90_demo(body.scores)
+        if body.scale_type == "PHQ-9":
+            total_score = sum(body.scores)
+            emotion_label, suggestion = score_phq9(total_score)
+        elif body.scale_type == "SCL-90":
+            emotion_label, suggestion, total_score = score_scl90_demo(body.scores)
+        elif body.scale_type == "GAD-7":
+            total_score = sum(body.scores)
+            emotion_label, suggestion = score_gad7(total_score)
+        elif body.scale_type == "PSS-10":
+            emotion_label, suggestion, total_score = score_pss10(body.scores)
+        elif body.scale_type == "SES":
+            emotion_label, suggestion, total_score = score_ses(body.scores)
+        else:
+            return err(400, "不支持的量表类型")
 
-    ai_messages = build_evaluation_messages(body.scale_type, total_score, emotion_label, suggestion, body.scores)
-    ai_res = llm_chat(ai_messages, max_tokens=LLM_EVAL_MAX_TOKENS, temperature=LLM_TEMP_EVAL, timeout=LLM_TIMEOUT_SEC)
-    ai_text = ai_res.text
-    ai_user_hint = ai_res.user_hint if not ai_text else None
-    _raw = (ai_text if ai_text else suggestion) or ""
-    final_suggestion = _raw[:62000] if len(_raw) > 62000 else _raw
-    ai_generated = bool(ai_text)
+        question_texts = [q.content for q in qs]
+        ai_messages = build_evaluation_messages(body.scale_type, total_score, emotion_label, suggestion, body.scores, questions=question_texts)
+        try:
+            ai_res = llm_chat(ai_messages, max_tokens=LLM_EVAL_MAX_TOKENS, temperature=LLM_TEMP_EVAL, timeout=LLM_TIMEOUT_SEC)
+            ai_text = ai_res.text
+            ai_user_hint = ai_res.user_hint if not ai_text else None
+            ai_backend = ai_res.backend if ai_text else None
+        except Exception as e:
+            _log.warning("LLM 调用失败，降级使用规则模板: %s", e)
+            ai_text = None
+            ai_user_hint = None
+            ai_backend = None
+        _raw = (ai_text if ai_text else suggestion) or ""
+        final_suggestion = _raw[:62000] if len(_raw) > 62000 else _raw
+        ai_generated = bool(ai_text)
 
-    now = datetime.now()
-    result = EvaluationResult(
-        user_id=user_id, scale_type=body.scale_type, total_score=total_score,
-        emotion_label=emotion_label, suggestion=final_suggestion,
-        ai_generated=ai_generated, llm_backend=(ai_res.backend if ai_text else None),
-        create_time=now,
-    )
-    db.add(result)
-    db.commit()
-    db.refresh(result)
-    return ok({
-        "id": result.id, "scale_type": body.scale_type, "total_score": total_score,
-        "emotion_label": emotion_label, "suggestion": final_suggestion,
-        "ai_generated": ai_generated, "ai_user_hint": ai_user_hint,
-        "llm_backend": ai_res.backend if ai_text else None,
-        "create_time": now.strftime("%Y-%m-%d %H:%M:%S"),
-    }, "测评完成")
+        now = datetime.now()
+        result = EvaluationResult(
+            user_id=user_id, scale_type=body.scale_type, total_score=total_score,
+            emotion_label=emotion_label, suggestion=final_suggestion,
+            ai_generated=ai_generated, llm_backend=ai_backend,
+            create_time=now,
+        )
+        db.add(result)
+        db.commit()
+        db.refresh(result)
+        return ok({
+            "id": result.id, "scale_type": body.scale_type, "total_score": total_score,
+            "emotion_label": emotion_label, "suggestion": final_suggestion,
+            "ai_generated": ai_generated, "ai_user_hint": ai_user_hint,
+            "llm_backend": ai_backend,
+            "create_time": now.strftime("%Y-%m-%d %H:%M:%S"),
+        }, "测评完成")
+    except Exception as e:
+        _log.exception("calculate_result 异常: scale=%s", body.scale_type)
+        # 返回 200 + 错误码，让前端能读到 msg
+        from fastapi.responses import JSONResponse
+        return JSONResponse(status_code=200, content={"code": 500, "msg": f"测评处理失败: {e}", "data": {}})
 
 # 【获取当前学生所有心理测评结果列表】的接口
 @router.get("/evaluation/get-my-results", response_model=ApiResponse)

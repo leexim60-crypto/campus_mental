@@ -5,32 +5,46 @@ import logging
 from fastapi import APIRouter, Depends
 from fastapi.responses import StreamingResponse
 
+# 导入全局配置参数（如Token限制、温度、超时时间、模型地址等
 from config import (
     DEEPSEEK_API_KEY, LLM_CHAT_MAX_TOKENS, LLM_PROVIDER,
     LLM_TEMP_CHAT, LLM_TIMEOUT_SEC, OLLAMA_BASE_URL, OLLAMA_MODEL,
 )
+# 导入依赖项：获取当前登录学生的 ID 和用户名
 from deps import get_current_student_id, get_current_student_username
+# 导入数据模型与统一响应格式工具
 from llm_client import (
     build_companion_system_prompt, chat_available,
     iter_llm_chat_sse, llm_chat, ollama_effective_base_url,
 )
+# 导入数据模型与统一响应格式工具
 from schemas import AiChatBody, ApiResponse, err, ok
 
+# 创建路由器，并设置统一的 API 前缀
 router = APIRouter(prefix="/api/v1")
 _log = logging.getLogger(__name__)
 
-
+"""
+启发式检测：AI 是否发生了“指令泄露”（Prompt Injection/Leakage）。
+部分开源小模型在对话时，可能会错误地将内部 messages 数组作为纯文本输出。
+此函数通过检查前 280 个字符是否包含 '"messages"' 来进行快速拦截。
+"""
 def _looks_like_messages_json_echo(text: str) -> bool:
     t = (text or "").strip()
     if len(t) < 15 or not t.startswith("{"):
         return False
     return '"messages"' in t[:280].lower()
 
-
+"""
+    格式化 SSE (Server-Sent Events) 数据行。
+    ensure_ascii=False 确保 JSON 中的中文不被转义为 Unicode 编码。
+"""
 def _ai_chat_sse_line(obj: dict) -> str:
     return f"data: {json.dumps(obj, ensure_ascii=False)}\n\n"
 
-
+"""
+    同步 AI 对话接口。等待大模型完整生成后，一次性返回全部文本。
+"""
 @router.post(
     "/ai/chat", response_model=ApiResponse,
     summary="心灵树洞多轮对话",
@@ -55,6 +69,10 @@ def ai_chat(body: AiChatBody, username: str = Depends(get_current_student_userna
     return ok({"reply": res.text, "llm_backend": res.backend}, "ok")
 
 
+"""
+    流式 AI 对话接口。采用 Server-Sent Events (SSE) 协议，逐字返回生成内容，
+    极大提升用户在长文本生成时的交互体验。
+"""
 @router.post("/ai/chat/stream", summary="心灵树洞流式对话（SSE）")
 def ai_chat_stream(body: AiChatBody, username: str = Depends(get_current_student_username)):
     if body.messages[-1].role != "user":
@@ -96,7 +114,10 @@ def ai_chat_stream(body: AiChatBody, username: str = Depends(get_current_student
         headers={"Cache-Control": "no-cache", "Connection": "keep-alive", "X-Accel-Buffering": "no"},
     )
 
-
+"""
+    获取 AI 模块的公开配置状态。
+    前端在初始化聊天界面时调用此接口，以决定展示“AI 聊天”还是“仅本地模式提示”。
+"""
 @router.get("/ai/public-config", response_model=ApiResponse)
 def ai_public_config():
     return ok({

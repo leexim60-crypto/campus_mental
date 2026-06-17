@@ -38,42 +38,6 @@ SCL90_DEMO_ITEMS = [
     "担心自己的衣饰整齐及仪态的端正",
 ]
 
-GAD7_ITEMS = [
-    "感到紧张、焦虑或烦躁",
-    "不能停止或控制担忧",
-    "对各种各样的事情担忧过多",
-    "很难放松下来",
-    "烦躁不安，很难静坐着",
-    "变得容易烦恼或急躁",
-    "感到好像将有可怕的事情发生",
-]
-
-PSS10_ITEMS = [
-    "因为发生了意想不到的事情而感到心烦意乱",
-    "感到无法控制生活中重要的事情",
-    "感到紧张和有压力",
-    "对自己处理个人问题的能力感到自信",
-    "感觉事情按照自己的意愿进行",
-    "发现自己无法应对所有必须做的事情",
-    "能够控制生活中令人恼火的事情",
-    "感到自己掌控一切",
-    "因为事情超出控制而感到愤怒",
-    "觉得困难堆积得太多，无法克服",
-]
-
-SES_ITEMS = [
-    "我觉得自己是一个有价值的人，至少和别人一样",
-    "我觉得自己有许多好的品质",
-    "总的来说，我倾向于认为自己是一个失败者",
-    "我能把大多数事情做得和别人一样好",
-    "我觉得自己没有什么值得骄傲的",
-    "我对自己持肯定态度",
-    "总的来说，我对自己感到满意",
-    "我希望我能更尊重自己",
-    "我有时确实觉得自己毫无用处",
-    "我有时认为自己一无是处",
-]
-
 # ── 心理资源种子 ──────────────────────────────────────────
 
 RESOURCE_SEED_ROWS: list[tuple[str, str, str, Optional[str]]] = [
@@ -423,8 +387,17 @@ RESOURCE_SEED_ROWS: list[tuple[str, str, str, Optional[str]]] = [
 ]
 
 
-# ── 自动迁移 ──────────────────────────────────────────────
+"""
+自动检查并为 evaluation_result 表补充 ai_generated 字段（针对 MySQL 数据库的旧库平滑升级）。
 
+在系统演进过程中，若生产环境的数据库尚未同步新增的 ORM 模型字段，
+该函数会在应用启动时自动探测并执行 ALTER TABLE 操作，确保代码与数据库结构一致，
+避免因缺失字段导致的 SQL 报错。
+
+注意：
+    1. 该升级逻辑仅针对 MySQL 数据库生效，其他数据库将直接跳过。
+    2. 升级失败不会阻断应用启动，仅记录警告日志，需人工介入处理。
+"""
 def _ensure_evaluation_result_ai_column() -> None:
     if "mysql" not in DATABASE_URL.lower():
         return
@@ -455,6 +428,12 @@ def _ensure_evaluation_result_ai_column() -> None:
         _log.warning("自动检查/添加 ai_generated 列未成功（可手动执行 migrations 下 SQL）: %s", e)
 
 
+"""
+    自动检查并为 evaluation_result 表补充 llm_backend 字段（针对 MySQL 数据库的旧库平滑升级）。
+    注意：
+        1. 该升级逻辑仅针对 MySQL 数据库生效，其他数据库将直接跳过。
+        2. 升级失败不会阻断应用启动，仅记录警告日志，需人工介入处理。
+    """
 def _ensure_evaluation_result_llm_backend_column() -> None:
     if "mysql" not in DATABASE_URL.lower():
         return
@@ -485,8 +464,12 @@ def _ensure_evaluation_result_llm_backend_column() -> None:
         _log.warning("自动检查/添加 llm_backend 列未成功: %s", e)
 
 
-# ── 种子数据 ──────────────────────────────────────────────
 
+"""
+    为心理健康资源表（mental_resource）填充初始种子数据。
+    Args:
+        db (Session): 当前活动的 SQLAlchemy 数据库会话对象。
+    """
 def _seed_mental_resources(db: Session) -> None:
     for title, rtype, content, url in RESOURCE_SEED_ROWS:
         exists = db.query(MentalResource).filter(MentalResource.title == title).first()
@@ -503,6 +486,11 @@ def _seed_mental_resources(db: Session) -> None:
         )
 
 
+"""
+    按标题自动同步并更新已有的心理健康资源数据。
+    Args:
+        db (Session): 当前活动的 SQLAlchemy 数据库会话对象。
+"""
 def _update_mental_resources(db: Session) -> None:
     """按标题更新已有资源的内容（启动时自动同步最新内容到数据库）。"""
     for title, rtype, content, url in RESOURCE_SEED_ROWS:
@@ -513,33 +501,33 @@ def _update_mental_resources(db: Session) -> None:
             row.type = rtype
     db.commit()
 
-
-_SCALE_SEEDS: list[tuple[str, list[str]]] = [
-    ("PHQ-9", PHQ9_ITEMS),
-    ("SCL-90", SCL90_DEMO_ITEMS),
-    ("GAD-7", GAD7_ITEMS),
-    ("PSS-10", PSS10_ITEMS),
-    ("SES", SES_ITEMS),
-]
-
-
-def _seed_missing_scales(db: Session) -> None:
-    """按量表逐个检查，缺哪个补哪个，已有数据不会重复插入。"""
-    for scale_type, items in _SCALE_SEEDS:
-        exists = db.query(EvaluationQuestion).filter(EvaluationQuestion.scale_type == scale_type).first()
-        if exists:
-            continue
-        for i, t in enumerate(items, start=1):
-            db.add(EvaluationQuestion(scale_type=scale_type, content=t, sort=i))
-        _log.info("已为 %s 插入 %d 道题目", scale_type, len(items))
-
-
+"""
+    系统全局数据初始化入口（仅在核心数据缺失时触发）。
+    Args:
+        db (Session): 当前活动的 SQLAlchemy 数据库会话对象。
+"""
 def seed_if_empty(db: Session) -> None:
-    _seed_missing_scales(db)
+    if db.query(EvaluationQuestion).count() == 0:
+        for i, t in enumerate(PHQ9_ITEMS, start=1):
+            db.add(EvaluationQuestion(scale_type="PHQ-9", content=t, sort=i))
+        for i, t in enumerate(SCL90_DEMO_ITEMS, start=1):
+            db.add(EvaluationQuestion(scale_type="SCL-90", content=t, sort=i))
+
     _seed_mental_resources(db)
     db.commit()
 
+"""
+    应用全局启动引导函数，负责在应用启动时自动执行数据库平滑升级、建表、种子数据填充与内容同步。
 
+    该函数通常在 FastAPI 的 @app.on_event("startup") 生命周期中被调用。
+    它严格按照业务依赖顺序执行初始化任务，确保底层表结构就绪后，再进行数据的初始化与更新。
+
+    执行流程：
+        1. 自动执行旧库平滑升级（补充 AI 相关字段）。
+        2. 自动执行 ORM 模型建表（针对新部署的环境）。
+        3. 初始化核心问卷与内置资源（仅在缺失时触发）。
+        4. 同步并更新最新的内置资源内容。
+"""
 def run_startup() -> None:
     """启动时执行自动迁移、建表、种子数据与内容同步。"""
     _ensure_evaluation_result_ai_column()

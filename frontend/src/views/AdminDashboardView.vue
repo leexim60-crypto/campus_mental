@@ -4,7 +4,6 @@
       <div class="screen-title">心理健康数据可视化大屏</div>
       <div class="screen-meta">
         <span class="clock">{{ clock }}</span>
-        <ThemeToggle variant="floating" class="dashboard-theme-toggle" />
         <el-button type="primary" link class="hdr-btn" @click="loadAll">刷新</el-button>
         <el-button type="warning" link class="hdr-btn" @click="$router.push('/admin/statistic')">
           数据统计
@@ -53,7 +52,6 @@
 import { computed, onMounted, onUnmounted, ref, nextTick } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import ThemeToggle from '@/components/ThemeToggle.vue'
 import * as echarts from 'echarts'
 import dayjs from 'dayjs'
 import api from '@/api'

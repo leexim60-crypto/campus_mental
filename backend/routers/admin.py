@@ -22,7 +22,14 @@ from security import create_access_token, hash_password, verify_password
 
 router = APIRouter(prefix="/api/v1")
 
-
+"""
+安全地校验超级管理员注册密钥（邀请码）是否正确。
+Args:
+    provided (str): 客户端在注册请求中提交的密钥。
+    expected (str): 服务端配置或数据库中存储的正确密钥。
+Returns:
+    bool: 密钥匹配返回 True，否则返回 False。
+"""
 def _admin_register_secret_ok(provided: str, expected: str) -> bool:
     if not expected or not provided:
         return False
@@ -31,8 +38,14 @@ def _admin_register_secret_ok(provided: str, expected: str) -> bool:
     return hmac.compare_digest(p, e)
 
 
-# ── 管理员账号 ────────────────────────────────────────────
-
+"""
+    超级管理员安全注册接口。
+    Args:
+        body (AdminRegisterBody): 包含用户名、密码、确认密码及注册密钥的请求体。
+        db (Session): 依赖注入的数据库会话。
+    Returns:
+        ApiResponse: 标准的统一响应格式，包含操作结果或错误信息。
+"""
 @router.post("/admin/register", response_model=ApiResponse)
 def admin_register(body: AdminRegisterBody, db: Session = Depends(get_db)):
     if not ADMIN_REGISTER_SECRET:
@@ -54,6 +67,14 @@ def admin_register(body: AdminRegisterBody, db: Session = Depends(get_db)):
     return ok({"username": user.username}, "管理员注册成功，请登录")
 
 
+"""
+    管理员登录接口。
+    Args:
+        body (AdminLoginBody): 包含用户名和密码的请求体。
+        db (Session): 依赖注入的数据库会话。
+    Returns:
+        ApiResponse: 包含 JWT 令牌及用户基本信息的标准响应。
+    """
 @router.post("/admin/login", response_model=ApiResponse)
 def admin_login(body: AdminLoginBody, db: Session = Depends(get_db)):
     user = db.query(User).filter(User.username == body.username, User.role == "admin").first()
@@ -66,11 +87,31 @@ def admin_login(body: AdminLoginBody, db: Session = Depends(get_db)):
     }, "登录成功")
 
 
+"""
+    管理员权限验证探针接口。
+    核心机制：
+        接口本身不包含任何业务逻辑，完全依赖 `get_current_admin_id` 依赖注入。
+        如果令牌无效或角色不符，依赖项会直接抛出 401/403 异常，接口代码不会被执行；
+        如果代码执行到这里，说明鉴权已通过。
+    Args:
+        _: int: 依赖注入返回的当前管理员 ID。由于本接口无需使用该 ID，
+                使用下划线 (_) 作为占位符，符合 Python 编码规范。
+    Returns:
+        ApiResponse: 包含 permission: True 的标准响应，表示鉴权成功。
+"""
 @router.get("/admin/check-permission", response_model=ApiResponse)
 def admin_check_permission(_: int = Depends(get_current_admin_id)):
     return ok({"permission": True}, "权限验证通过")
 
 
+"""
+    获取当前登录管理员的详细信息。
+    Args:
+        db (Session): 依赖注入的数据库会话。
+        admin_id (int): 依赖注入的当前管理员 ID（由 JWT 解析得出）。
+    Returns:
+        ApiResponse: 包含管理员基本信息的标准响应。
+"""
 @router.get("/admin/info", response_model=ApiResponse)
 def admin_info(db: Session = Depends(get_db), admin_id: int = Depends(get_current_admin_id)):
     u = db.query(User).filter(User.id == admin_id).first()
@@ -82,6 +123,15 @@ def admin_info(db: Session = Depends(get_db), admin_id: int = Depends(get_curren
     }, "获取成功")
 
 
+"""
+    管理员修改密码接口。
+    Args:
+        body (AdminChangePasswordBody): 包含旧密码和新密码的请求体。
+        db (Session): 依赖注入的数据库会话。
+        admin_id (int): 依赖注入的当前管理员 ID（由 JWT 解析得出）。
+    Returns:
+        ApiResponse: 标准的统一响应格式，表示修改结果。
+"""
 @router.post("/admin/change-password", response_model=ApiResponse)
 def admin_change_password(
     body: AdminChangePasswordBody,
@@ -98,8 +148,21 @@ def admin_change_password(
     return ok({}, "密码已修改")
 
 
-# ── 统计与导出 ────────────────────────────────────────────
+"""
+    获取评估结果的情绪标签统计分布。
 
+    该接口允许管理员按时间范围筛选评估数据，统计各情绪标签的出现次数。
+    通常用于后台数据看板的可视化图表展示。
+
+    Args:
+        start_time (Optional[str]): 筛选的起始日期（格式：YYYY-MM-DD），包含当天。
+        end_time (Optional[str]): 筛选的结束日期（格式：YYYY-MM-DD），包含当天。
+        db (Session): 依赖注入的数据库会话。
+        _: int: 依赖注入的当前管理员 ID，用于鉴权，本接口无需使用该值。
+
+    Returns:
+        ApiResponse: 包含情绪标签及对应计数的列表。
+"""
 @router.get("/admin/statistic/emotion", response_model=ApiResponse)
 def statistic_emotion(
     start_time: Optional[str] = None, end_time: Optional[str] = None,
@@ -122,6 +185,16 @@ def statistic_emotion(
     return ok({"emotion_stats": [{"label": l, "count": c} for l, c in stats.items()]}, "获取成功")
 
 
+"""
+    获取各量表评估次数的统计数据。
+    Args:
+        start_time (Optional[str]): 筛选的起始日期（格式：YYYY-MM-DD），包含当天。
+        end_time (Optional[str]): 筛选的结束日期（格式：YYYY-MM-DD），包含当天。
+        db (Session): 依赖注入的数据库会话。
+        _: int: 依赖注入的当前管理员 ID，用于鉴权，本接口无需使用该值。
+    Returns:
+        ApiResponse: 包含量表类型及对应评估次数的列表。
+"""
 @router.get("/admin/statistic/scale", response_model=ApiResponse)
 def statistic_scale(
     start_time: Optional[str] = None, end_time: Optional[str] = None,
@@ -144,14 +217,33 @@ def statistic_scale(
     return ok({"scale_stats": [{"scale_type": s, "count": c} for s, c in stats.items()]}, "获取成功")
 
 
+"""
+    数据导出引导接口。
+    Args:
+        body (ExportDataBody): 包含导出筛选条件（如时间范围、量表类型等）的请求体。
+        _: int: 依赖注入的当前管理员 ID，用于鉴权，确保只有合法管理员能触发导出。
+    Returns:
+        ApiResponse: 包含文件下载路径及操作提示的标准响应。
+    """
 @router.post("/admin/export-data", response_model=ApiResponse)
 def admin_export_data(body: ExportDataBody, _: int = Depends(get_current_admin_id)):
+    # 1. 权限校验已通过（由 Depends 自动完成）
+    # 2. 业务逻辑：此处可添加对 body 参数的校验，或触发异步导出任务
+    # 3. 返回下载引导信息
     return ok({
         "hint": "请使用「导出测评 CSV」按钮下载文件",
         "download_path": "/api/v1/admin/export/evaluations.csv",
     }, "请使用 GET /api/v1/admin/export/evaluations.csv 携带管理员 Token 下载")
 
 
+"""
+    导出评估结果为 CSV 文件流。
+    Args:
+        db (Session): 依赖注入的数据库会话。
+        _: int: 依赖注入的当前管理员 ID，用于鉴权，确保只有合法管理员能导出敏感数据。
+    Returns:
+        StreamingResponse: 包含 CSV 数据的 HTTP 文件流响应。
+"""
 @router.get("/admin/export/evaluations.csv")
 def admin_export_evaluations_csv(db: Session = Depends(get_db), _: int = Depends(get_current_admin_id)):
     rows = (
@@ -177,6 +269,16 @@ def admin_export_evaluations_csv(db: Session = Depends(get_db), _: int = Depends
     )
 
 
+"""
+    获取评估结果的分页列表。
+    Args:
+        page (int): 当前页码，从 1 开始，最小值为 1。
+        size (int): 每页条数，范围限制在 1~100 之间，防止单次查询过大。
+        db (Session): 依赖注入的数据库会话。
+        _: int: 依赖注入的当前管理员 ID，用于鉴权。
+    Returns:
+        ApiResponse: 包含分页元数据（total）和当前页数据列表（list）的标准响应。
+"""
 @router.get("/admin/evaluation/list", response_model=ApiResponse)
 def admin_evaluation_list(
     page: int = Query(1, ge=1), size: int = Query(10, ge=1, le=100),

@@ -56,12 +56,29 @@ def ollama_effective_base_url() -> str:
 
 @dataclass
 class LLMResult:
+    """
+        封装大语言模型（LLM）调用结果的标准化数据容器。
+
+        用于在业务逻辑与接口层之间统一传递 AI 模型的响应数据。
+        所有字段均为可选，允许根据实际业务场景灵活返回部分数据。
+
+        Attributes:
+            text (Optional[str]): LLM 生成的核心文本内容（即模型的实际回答）。
+            user_hint (Optional[str]): 面向用户的提示信息。例如生成失败、触发安全拦截
+                                       或需要用户补充输入时的友好提示文案。
+            backend (Optional[str]): 实际使用的后端模型名称
+                                     主要用于前端展示，让用户知晓当前提供服务的 AI 模型。
+        """
     text: Optional[str] = None
     user_hint: Optional[str] = None
-    """使用的后端：便于前端展示"""
     backend: Optional[str] = None
 
 
+"""
+    动态构建 DeepSeek 聊天接口的完整 URL。
+    Returns:
+        str: 完整的 DeepSeek Chat Completions API 请求地址。
+    """
 def _deepseek_url() -> str:
     base = DEEPSEEK_BASE_URL.rstrip("/")
     if base.endswith("/v1"):
@@ -69,8 +86,15 @@ def _deepseek_url() -> str:
     return f"{base}/v1/chat/completions"
 
 
+"""
+    解析 OpenAI 兼容的 SSE（Server-Sent Events）流式响应，逐步提取文本内容。
+    Args:
+        response (httpx.Response): httpx 返回的流式响应对象。
+
+    Yields:
+        str: 从流中逐步解析出的大模型文本内容片段（delta content）。
+    """
 def _iter_openai_sse_content(response: httpx.Response) -> Iterator[str]:
-    """解析 OpenAI 兼容的 SSE（DeepSeek / Ollama /v1）。"""
     for line in response.iter_lines():
         if not line:
             continue
@@ -94,6 +118,20 @@ def _iter_openai_sse_content(response: httpx.Response) -> Iterator[str]:
             yield content
 
 
+"""
+    调用 DeepSeek API 并逐步返回生成的文本内容。
+    Args:
+        messages (list[dict[str, Any]]): 遵循 OpenAI 规范的对话历史消息列表。
+        max_tokens (int): 模型单次生成的最大 Token 数量。
+        temperature (float): 生成文本的随机性/创造性参数。
+        timeout (float): HTTP 请求的超时时间（秒）。
+
+    Yields:
+        str: 从 DeepSeek 流式响应中逐步解析出的文本内容片段。
+
+    Raises:
+        LLMStreamError: 当未配置 API Key、HTTP 请求失败或 API 返回业务错误时抛出。
+"""
 def _stream_deepseek_chunks(
     messages: list[dict[str, Any]],
     *,
@@ -129,6 +167,22 @@ def _stream_deepseek_chunks(
             yield from _iter_openai_sse_content(r)
 
 
+"""
+    调用本地 Ollama 原生 API 并逐步返回生成的文本内容。
+    Args:
+        client (httpx.Client): 复用的 httpx 客户端实例。
+        base (str): Ollama 服务的本地基础 URL（如 http://localhost:11434）。
+        model (str): 要调用的 Ollama 模型名称。
+        messages (list[dict[str, Any]]): 遵循 Ollama 规范的对话历史消息列表。
+        options (dict[str, Any]): Ollama 专属的模型生成参数（如 temperature, top_p 等）。
+        timeout (float): HTTP 请求的超时时间（秒）。
+
+    Yields:
+        str: 从 Ollama 流式响应中逐步解析出的文本内容片段。
+
+    Raises:
+        LLMStreamError: 当 HTTP 请求失败时抛出，包含详细的 Ollama 错误诊断信息。
+"""
 def _stream_ollama_native_chunks(
     client: httpx.Client,
     base: str,
@@ -167,6 +221,21 @@ def _stream_ollama_native_chunks(
                 yield c
 
 
+"""
+    调用 Ollama 模型并逐步返回生成的文本内容，支持 OpenAI 兼容接口与原生接口的自动降级。
+    1. 优先尝试使用 Ollama 的 OpenAI 兼容接口 (/v1/chat/completions)。
+    2. 若兼容接口请求成功且能正常解析出内容，则直接返回流式结果。
+    3. 若兼容接口不可用（如返回 404）或发生其他非致命错误，
+       则自动降级（Fallback）到 Ollama 原生接口 (/api/chat) 继续流式输出。
+
+    Args:
+        messages (list[dict[str, Any]]): 对话历史消息列表。
+        max_tokens (int): 模型单次生成的最大 Token 数量。
+        temperature (float): 生成文本的随机性/创造性参数。
+        timeout (float): HTTP 请求的超时时间（秒）。
+    Yields:
+        str: 从 Ollama 流式响应中逐步解析出的文本内容片段。
+"""
 def _stream_ollama_chunks(
     messages: list[dict[str, Any]],
     *,
@@ -213,6 +282,19 @@ def _stream_ollama_chunks(
         )
 
 
+"""
+    大语言模型流式对话的统一入口（Facade），封装了多模型调度、自动降级与全局异常处理。
+    Args:
+        messages (list[dict[str, Any]]): 遵循 OpenAI 规范的对话历史消息列表。
+        max_tokens (int): 模型单次生成的最大 Token 数量，默认 1024。
+        temperature (float): 生成文本的随机性/创造性参数，默认 0.7。
+        timeout (float): HTTP 请求的超时时间（秒），默认 120.0。
+    Yields:
+        dict[str, Any]: 标准化的 SSE 事件字典，包含以下三种类型：
+            - {"event": "chunk", "text": "..."}: 逐步生成的文本内容片段。
+            - {"event": "done", "llm_backend": "deepseek"|"ollama"}: 流式生成正常结束。
+            - {"event": "error", "message": "..."}: 捕获到异常时的错误提示。
+"""
 def iter_llm_chat_sse(
     messages: list[dict[str, Any]],
     *,
@@ -291,6 +373,19 @@ def iter_llm_chat_sse(
         yield {"event": "error", "message": str(e)[:300]}
 
 
+"""
+    同步调用 DeepSeek API 并返回标准化的 LLM 结果。
+    Args:
+        messages (list[dict[str, Any]]): 遵循 OpenAI 规范的对话历史消息列表。
+        max_tokens (int): 模型单次生成的最大 Token 数量。
+        temperature (float): 生成文本的随机性/创造性参数。
+        timeout (float): HTTP 请求的超时时间（秒）。
+    Returns:
+        LLMResult: 封装了调用结果的数据类实例。
+            - 成功时：text 包含模型回复内容，user_hint 为 None。
+            - 失败时：text 为 None，user_hint 包含面向用户的错误提示或降级建议。
+            - backend 始终标记为 "deepseek"。
+"""
 def _call_deepseek(
     messages: list[dict[str, Any]],
     *,
@@ -360,7 +455,12 @@ def _call_deepseek(
         logger.warning("DeepSeek 异常: %s", e)
         return LLMResult(None, str(e)[:200], "deepseek")
 
-
+"""
+    Args:
+        name (str): 原始传入的模型名称。
+    Returns:
+        str: 修正后的模型名称。若未命中常见笔误，则原样返回。
+    """
 def _fix_ollama_model_typo(name: str) -> str:
     """常见笔误：少写 b、误用 7 等。"""
     n = (name or "").strip()
@@ -373,6 +473,22 @@ def _fix_ollama_model_typo(name: str) -> str:
     return fixes.get(n, n)
 
 
+"""
+    智能解析并校验 Ollama 模型名称，支持自动纠错与模糊匹配。
+    在发起模型调用前，通过查询本地 Ollama 的 /api/tags 接口确认模型是否存在。
+    若用户指定的模型未安装，会依次尝试：
+    1. 自动修复常见拼写错误。
+    2. 精确匹配已安装模型。
+    3. 前缀匹配（如匹配带有特定版本号的模型）。
+    4. 系列匹配（自动降级使用同系列的其他已安装模型）。
+    若校验过程发生异常（如 Ollama 未启动），则安全回退并返回原始名称。
+    Args:
+        client (httpx.Client): 复用的 httpx 客户端实例。
+        base (str): Ollama 服务的本地基础 URL。
+        wanted (str): 用户期望调用的模型名称。
+    Returns:
+        str: 最终解析出的、本地 Ollama 实际可用的模型名称。
+"""
 def _resolve_ollama_model(client: httpx.Client, base: str, wanted: str) -> str:
     """用 /api/tags 校验；名称不在列表则尝试匹配同系列已安装模型。"""
     wanted = _fix_ollama_model_typo(wanted)
@@ -403,6 +519,14 @@ def _resolve_ollama_model(client: httpx.Client, base: str, wanted: str) -> str:
     return wanted
 
 
+"""
+    从 Ollama API 的错误响应体中提取人类可读的错误信息。
+    Args:
+        body (str): Ollama API 返回的原始响应体字符串。
+
+    Returns:
+        str: 提取出的错误信息（最多 500 字符）。若无法提取或响应体无效，则返回空字符串。
+"""
 def _ollama_api_error_message(body: str) -> str:
     """Ollama 常在 JSON 里返回 {\"error\": \"...\"}，比裸 502 更有用。"""
     raw = (body or "").strip()
@@ -424,6 +548,15 @@ def _ollama_api_error_message(body: str) -> str:
     return ""
 
 
+"""
+    Ollama 对话失败后的后置诊断工具，通过探活请求精准定位故障原因。
+    Args:
+        client (httpx.Client): 复用的 httpx 客户端实例。
+        base (str): Ollama 服务的本地基础 URL。
+        model (str): 发生调用失败的模型名称。
+    Returns:
+        str: 包含诊断建议的提示字符串。若诊断过程发生未知异常，则返回空字符串。
+"""
 def _ollama_post_failure_diag(client: httpx.Client, base: str, model: str) -> str:
     """对话失败后再探活，区分「连错机器/WSL」与「推理挂了」。"""
     b = base.rstrip("/")
@@ -449,7 +582,15 @@ def _ollama_post_failure_diag(client: httpx.Client, base: str, model: str) -> st
     except Exception:
         return ""
 
-
+"""
+    生成针对 Ollama 502/5xx 错误的结构化排查指南。
+    Args:
+        status (int): Ollama 返回的 HTTP 状态码（通常为 502 或 5xx）。
+        body (str): Ollama 返回的原始响应体字符串。
+        model (str): 发生调用失败的模型名称。
+    Returns:
+        str: 包含详细排查步骤和原始错误信息的用户友好提示字符串。
+"""
 def _ollama_fail_hint(status: int, body: str, model: str) -> str:
     """502/5xx：通常已连上 Ollama，但模型或引擎异常。"""
     snip = (body or "").strip().replace("\n", " ")[:350]
@@ -466,6 +607,30 @@ def _ollama_fail_hint(status: int, body: str, model: str) -> str:
     )
 
 
+"""
+    同步调用 Ollama 本地模型并返回标准化的 LLM 结果。
+
+    该函数采用“双接口自动降级”策略：优先尝试使用新版 Ollama 更稳定的 
+    OpenAI 兼容接口 (/v1/chat/completions)，若失败或返回空内容，则自动
+    回退至 Ollama 原生接口 (/api/chat)。
+
+    同时，函数内置了极其详尽的异常捕获与诊断机制。当遇到连接拒绝、超时
+    或 502 等错误时，不会直接抛出底层异常，而是结合本地网络环境（如 WSL/
+    Docker 的 IP 映射、代理冲突、显存不足等常见痛点），生成一份“保姆级”
+    的排查指南返回给用户。
+
+    Args:
+        messages (list[dict[str, Any]]): 遵循 OpenAI 规范的对话历史消息列表。
+        max_tokens (int): 模型单次生成的最大 Token 数量。
+        temperature (float): 生成文本的随机性/创造性参数。
+        timeout (float): HTTP 请求的超时时间（秒）。
+
+    Returns:
+        LLMResult: 封装了调用结果的数据类实例。
+            - 成功时：text 包含模型回复内容，user_hint 为 None。
+            - 失败时：text 为 None，user_hint 包含面向用户的详细错误提示与排查步骤。
+            - backend 始终标记为 "ollama"。
+    """
 def _call_ollama(
     messages: list[dict[str, Any]],
     *,
@@ -473,14 +638,12 @@ def _call_ollama(
     temperature: float,
     timeout: float,
 ) -> LLMResult:
-    """
-    优先走 OpenAI 兼容接口 /v1/chat/completions（新版 Ollama 更稳），
-    失败再回退 /api/chat。502 多为模型名、显存或引擎未就绪，而非「没装 Ollama」。
-    """
+    # 1. 获取并规范化 Ollama 基础 URL（处理可能存在的尾部斜杠等问题）
     base = ollama_effective_base_url()
     if base != OLLAMA_BASE_URL.rstrip("/"):
         logger.info("Ollama URL 已规范化: %r -> %r", OLLAMA_BASE_URL, base)
 
+    # 2. 构建 OpenAI 兼容接口 (/v1) 的请求载荷
     url_v1 = f"{base}/v1/chat/completions"
     payload_v1: dict[str, Any] = {
         "model": OLLAMA_MODEL,
@@ -489,10 +652,10 @@ def _call_ollama(
         "temperature": temperature,
         "max_tokens": max_tokens,
     }
+    # 部分 Ollama 版本在 OpenAI 兼容接口中支持通过 options 传递 num_ctx
     if OLLAMA_NUM_CTX is not None:
-        #部分 Ollama 版本在 OpenAI 兼容接口中支持 options.num_ctx
         payload_v1["options"] = {"num_ctx": OLLAMA_NUM_CTX}
-
+    # 3. 构建 Ollama 原生接口 (/api/chat) 的请求载荷（作为降级备选）
     _native_opts: dict[str, Any] = {
         "temperature": temperature,
         "num_predict": max_tokens,
@@ -507,12 +670,14 @@ def _call_ollama(
         "stream": False,
         "options": _native_opts,
     }
+    # 4. 发起请求与全局异常处理
     try:
         with httpx.Client(timeout=timeout, **_HTTPX_LOCAL) as client:
+            # 智能解析并校验模型名称（自动纠错、模糊匹配已安装模型）
             model_use = _resolve_ollama_model(client, base, OLLAMA_MODEL)
             payload_v1["model"] = model_use
             payload_native["model"] = model_use
-
+            # 4.1 优先尝试 OpenAI 兼容接口
             r = client.post(url_v1, json=payload_v1)
             if r.status_code == 200:
                 try:
@@ -525,13 +690,15 @@ def _call_ollama(
                     )
                 except (TypeError, KeyError, IndexError):
                     content = ""
+                # 如果 v1 接口成功且解析出有效内容，直接返回
                 if content:
                     return LLMResult(content, None, "ollama")
+                # 如果返回 200 但无正文，记录警告并准备降级
                 logger.warning("Ollama /v1 200 但无正文，回退 /api/chat")
-
+            # 如果 v1 接口返回非 200 且非 404，记录警告
             if r.status_code not in (200, 404):
                 logger.warning("Ollama /v1 HTTP %s: %s", r.status_code, r.text[:400])
-
+            # 4.2 降级尝试 Ollama 原生接口
             r2 = client.post(url_native, json=payload_native)
             if r2.status_code == 200:
                 data = r2.json()
@@ -539,18 +706,25 @@ def _call_ollama(
                 content = (msg.get("content") or "").strip()
                 if content:
                     return LLMResult(content, None, "ollama")
+                # 原生接口 200 但内容为空
                 return LLMResult(None, "Ollama 返回内容为空。", "ollama")
 
+            # 4.3 双接口均失败，组装详尽的错误诊断提示
             err_txt = r2.text or r.text
             logger.warning("Ollama /api/chat HTTP %s: %s", r2.status_code, err_txt[:400])
+            # 提取 Ollama 返回的 JSON 错误信息
             api_err = _ollama_api_error_message(err_txt)
+            # 生成针对 502/5xx 的排查清单
             core = _ollama_fail_hint(r2.status_code, err_txt, model_use)
+            # 执行后置探活诊断，区分网络问题与推理问题
             diag = _ollama_post_failure_diag(client, base, model_use)
+            # 拼接最终的错误提示
             if api_err:
                 hint = f"Ollama 报错：{api_err}\n\n{core}{diag}"
             else:
                 hint = f"{core}{diag}"
             return LLMResult(None, hint, "ollama")
+    # 5. 捕获 TCP 连接被拒绝异常（通常是服务未启动或 IP 映射错误）
     except httpx.ConnectError:
         return LLMResult(
             None,
@@ -560,13 +734,23 @@ def _call_ollama(
             f" 然后执行：ollama pull {OLLAMA_MODEL}",
             "ollama",
         )
+    # 6. 捕获超时异常（大模型首次加载耗时较长）
     except httpx.TimeoutException:
         return LLMResult(None, "Ollama 响应超时（首次加载大模型可能需 1～3 分钟，可改小模型或加大等待）。", "ollama")
+    # 7. 捕获其他未知异常，截取前 200 字符防止提示过长
     except Exception as e:
         logger.warning("Ollama 异常: %s", e)
         return LLMResult(None, str(e)[:200], "ollama")
 
-
+"""
+    核心功能：根据配置自动选择调用 DeepSeek（云端）还是 Ollama（本地）。
+    路由逻辑说明：
+    1. 如果配置为 'deepseek'：强制走云端 API。
+    2. 如果配置为 'ollama'：强制走本地模型。
+    3. 如果配置为 'auto'（默认推荐）：
+       - 优先尝试 DeepSeek（如果有 Key 且网络通畅）。
+       - 如果 DeepSeek 失败或没配 Key，自动“降级”回退到本地 Ollama，保证服务不中断。
+"""
 def llm_chat(
     messages: list[dict[str, Any]],
     *,

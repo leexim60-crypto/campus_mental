@@ -105,6 +105,7 @@ onMounted(() => {
   const remembered = localStorage.getItem('remember_username')
   if (remembered) {
     form.username = remembered
+    form.password = localStorage.getItem('remember_password') || ''
     form.remember = true
   }
 })
@@ -133,8 +134,10 @@ const onSubmit = () => {
         })
         if (form.remember) {
           localStorage.setItem('remember_username', username)
+          localStorage.setItem('remember_password', form.password)
         } else {
           localStorage.removeItem('remember_username')
+          localStorage.removeItem('remember_password')
         }
         ElMessage.success('登录成功')
         setTimeout(() => {

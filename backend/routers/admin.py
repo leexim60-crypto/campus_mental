@@ -8,7 +8,7 @@ from typing import Optional
 
 from fastapi import APIRouter, Depends, Query
 from fastapi.responses import StreamingResponse
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 
 from config import ADMIN_REGISTER_SECRET
 from database import get_db
@@ -286,6 +286,7 @@ def admin_evaluation_list(
 ):
     query = (
         db.query(EvaluationResult)
+        .options(joinedload(EvaluationResult.user))
         .join(User, EvaluationResult.user_id == User.id)
         .order_by(EvaluationResult.create_time.desc())
     )

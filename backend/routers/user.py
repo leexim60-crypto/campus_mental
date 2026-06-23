@@ -58,8 +58,9 @@ def score_gad7(total_score: int) -> tuple[str, str]:
 
 
 def score_pss10(scores: List[int]) -> tuple[str, str, int]:
-    # 第4、5、7、8题为正向题（感觉事情可控），需反向计分
-    reverse_indices = {3, 4, 6, 7}  # 0-based
+    # 正向题（0-based index 3/4/6/8）：感到事情可控 → 需反向计分
+    # 对应种子数据中第 4、5、7、9 题
+    reverse_indices = {3, 4, 6, 8}
     adjusted = []
     for i, s in enumerate(scores):
         if i in reverse_indices:
@@ -75,8 +76,9 @@ def score_pss10(scores: List[int]) -> tuple[str, str, int]:
 
 
 def score_ses(scores: List[int]) -> tuple[str, str, int]:
-    # 第3、5、6、9、10题为反向题（负向表述），需反向计分
-    reverse_indices = {2, 4, 5, 8, 9}  # 0-based
+    # 负向表述（0-based index 2/4/7/8/9）：自我否定 → 需反向计分
+    # 对应种子数据中第 3、5、8、9、10 题
+    reverse_indices = {2, 4, 7, 8, 9}
     adjusted = []
     for i, s in enumerate(scores):
         if i in reverse_indices:

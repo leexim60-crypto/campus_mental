@@ -34,11 +34,14 @@
 
 <script setup>
 import { reactive, ref } from 'vue'
+import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import ThemeToggle from '@/components/ThemeToggle.vue'
 import api from '@/api'
 import { useAdminAuthStore } from '@/stores/adminAuth'
 
+const router = useRouter()
+const adminAuth = useAdminAuthStore()
 const formRef = ref()
 const loading = ref(false)
 const form = reactive({
@@ -75,7 +78,7 @@ const onSubmit = () => {
         adminAuth.clearSession()
         ElMessage.success('注册成功，请登录')
         setTimeout(() => {
-          window.location.href = '/login'
+          router.push('/login')
         }, 300)
       } else {
         ElMessage.error(data.msg || '注册失败')

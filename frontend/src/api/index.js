@@ -28,9 +28,11 @@ instance.interceptors.response.use(
     if (status === 401) {
       if (url.includes('/api/v1/admin')) {
         admin.clearSession()
-        ElMessage.error('管理员登录已过期')
-        if (!url.includes('login')) window.location.href = '/admin/login'
-      } else if (!url.includes('/user/login') && !url.includes('/user/register')) {
+        if (!url.includes('/admin/login') && !url.includes('/admin/register')) {
+          ElMessage.error('管理员登录已过期')
+          window.location.href = '/admin/login'
+        }
+      } else if (!url.includes('/user/login') && !url.includes('/user/register') && !url.includes('/user/reset-password')) {
         student.clearSession()
         ElMessage.error('登录已过期')
         window.location.href = '/login'

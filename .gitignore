@@ -1,5 +1,9 @@
-# 排除更新后的前端
-
+# ── 根目录文档与杂项（仅推送 backend/ 和 frontend/）──
+/*
+!.gitignore
+!README.md
+!backend/
+!frontend/
 
 # Python
 __pycache__/
